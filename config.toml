@@ -3,7 +3,17 @@
 # City codes cover every airport in the metro area, which is usually what you want.
 
 [[origin]]
-code = "NYC"
+code = "SEA"
+currency = "usd"
+market = "us"
+
+[[origin]]
+code = "SFO"
+currency = "usd"
+market = "us"
+
+[[origin]]
+code = "PDX"
 currency = "usd"
 market = "us"
 
@@ -14,6 +24,11 @@ market = "in"
 
 [[origin]]
 code = "BOM"
+currency = "inr"
+market = "in"
+
+[[origin]]
+code = "JAI"
 currency = "inr"
 market = "in"
 
@@ -40,17 +55,22 @@ min_other_months = 4
 # Re-check top deals on Google Flights before showing and alerting.
 # Google often blocks cloud IPs, so this may only work from your own machine.
 enabled = true
-max_per_run = 15
+max_per_run = 20
 delay_seconds = 4
 # A live price up to this much above the cached price still counts as confirmed.
 tolerance = 0.15
 # Reuse a check for this many hours before checking the same trip again.
-cache_hours = 12
+cache_hours = 6
 
 [alerts]
-# Telegram alerts fire for deals at least this far below baseline.
+# Each scan emails one digest of new deals at least this far below baseline
+# (and sends Telegram messages, if configured).
 min_off = 0.50
+# Only alert on deals Google Flights confirmed at (or near) the cached price.
+require_live_check = true
 # Alert again on the same route and month only if the price drops this much more...
 realert_drop = 0.10
 # ...or this many days have passed since the last alert.
 realert_days = 14
+# Linked from the email.
+dashboard_url = "https://devendr-ai.github.io/farescout/"

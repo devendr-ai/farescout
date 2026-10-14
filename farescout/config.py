@@ -35,8 +35,10 @@ class VerifyRules:
 @dataclass(frozen=True)
 class AlertRules:
     min_off: float = 0.50
+    require_live_check: bool = True
     realert_drop: float = 0.10
     realert_days: int = 14
+    dashboard_url: str = ""
 
 
 @dataclass(frozen=True)

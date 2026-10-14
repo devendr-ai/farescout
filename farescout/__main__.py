@@ -2,7 +2,7 @@
 
     python -m farescout scan          # scan, detect, live-check, write docs/deals.json, alert
     python -m farescout scan --no-verify --no-alerts
-    python -m farescout test-alert    # send a test Telegram message
+    python -m farescout test-alert    # send a test email and/or Telegram message
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import config as config_mod
 from .detect import find_deals
+from .email_digest import build_digest, email_configured, send_email
 from .export import deal_to_json, history_window_start, month_range, write_deals_json
 from .notify import format_deal, send_telegram, telegram_configured
 from .store import Store, utcnow
@@ -113,35 +114,62 @@ def cmd_scan(args: argparse.Namespace) -> int:
     write_deals_json(Path(args.out), now.isoformat(), origins_json, out_deals, stats)
     log.info("wrote %s", args.out)
 
-    # 5. Alerts.
-    if not args.no_alerts and telegram_configured():
-        sent = 0
-        for d in out_deals:
-            if d["off"] < cfg.alerts.min_off or d["verified"]["status"] in ("gone", "higher"):
-                continue
-            last = store.last_alert(d["origin"], d["destination"], d["month"])
-            if last:
-                last_price, sent_at = last
-                dropped = d["price"] <= last_price * (1 - cfg.alerts.realert_drop)
-                stale = now - sent_at > timedelta(days=cfg.alerts.realert_days)
-                if not (dropped or stale):
-                    continue
-            if send_telegram(format_deal(d)):
+    # 5. Alerts: one email digest per run, plus a Telegram message per deal if configured.
+    if not args.no_alerts and (email_configured() or telegram_configured()):
+        fresh = select_new_alerts(out_deals, cfg.alerts, store.last_alert, now)
+        delivered = False
+        if fresh and email_configured():
+            delivered = send_email(*build_digest(fresh, cfg.alerts.dashboard_url)) or delivered
+        if fresh and telegram_configured():
+            for d in fresh:
+                delivered = send_telegram(format_deal(d)) or delivered
+        if delivered:
+            for d in fresh:
                 store.mark_alerted(d["origin"], d["destination"], d["month"], d["price"])
-                sent += 1
-        log.info("sent %d alert(s)", sent)
+        log.info("%d new deal(s) to alert, delivered: %s", len(fresh), delivered)
 
     store.prune(keep_days=max(cfg.deals.history_days, 30) + 7, today=today)
     store.close()
     return 0
 
 
+def select_new_alerts(deals: list[dict], rules, last_alert, now) -> list[dict]:
+    """Deals worth alerting that haven't been sent, or got cheaper since they were."""
+    out = []
+    for d in deals:
+        status = d["verified"]["status"]
+        if d["off"] < rules.min_off or status in ("gone", "higher"):
+            continue
+        if rules.require_live_check and status != "confirmed":
+            continue
+        last = last_alert(d["origin"], d["destination"], d["month"])
+        if last:
+            last_price, sent_at = last
+            dropped = d["price"] <= last_price * (1 - rules.realert_drop)
+            stale = now - sent_at > timedelta(days=rules.realert_days)
+            if not (dropped or stale):
+                continue
+        out.append(d)
+    return out
+
+
 def cmd_test_alert(args: argparse.Namespace) -> int:
-    if not telegram_configured():
-        log.error("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID first.")
+    if not (email_configured() or telegram_configured()):
+        log.error("Set SMTP_USER and SMTP_PASSWORD (email) or TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID first.")
         return 2
-    ok = send_telegram("✈️ Farescout test alert. Deals will arrive here.")
-    log.info("sent" if ok else "Telegram rejected the message. Check the token and chat id.")
+    ok = True
+    if email_configured():
+        sent = send_email(
+            "Farescout test email",
+            "Farescout is set up. Deal digests will arrive at this address.",
+            "<p>Farescout is set up. Deal digests will arrive at this address.</p>",
+        )
+        log.info("email sent" if sent else "email failed. Check SMTP_USER, SMTP_PASSWORD and the app password.")
+        ok = ok and sent
+    if telegram_configured():
+        sent = send_telegram("✈️ Farescout test alert. Deals will arrive here.")
+        log.info("Telegram sent" if sent else "Telegram rejected the message. Check the token and chat id.")
+        ok = ok and sent
     return 0 if ok else 1
 
 
@@ -154,9 +182,9 @@ def main(argv: list[str] | None = None) -> int:
     scan = sub.add_parser("scan", help="scan fares, find deals, write deals.json, send alerts")
     scan.add_argument("--out", default=str(ROOT / "docs" / "deals.json"))
     scan.add_argument("--no-verify", action="store_true", help="skip Google Flights live checks")
-    scan.add_argument("--no-alerts", action="store_true", help="skip Telegram alerts")
+    scan.add_argument("--no-alerts", action="store_true", help="skip email and Telegram alerts")
     scan.set_defaults(func=cmd_scan)
-    test = sub.add_parser("test-alert", help="send a test Telegram message")
+    test = sub.add_parser("test-alert", help="send a test email and/or Telegram message")
     test.set_defaults(func=cmd_test_alert)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(message)s")

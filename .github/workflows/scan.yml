@@ -2,7 +2,8 @@ name: Scan fares
 
 on:
   schedule:
-    - cron: "17 */6 * * *"  # every 6 hours
+    # 14:00 and 01:00 UTC: about 7am and 6pm in Seattle, 7:30pm and 6:30am in India.
+    - cron: "0 1,14 * * *"
   workflow_dispatch:
 
 permissions:
@@ -43,6 +44,11 @@ jobs:
           TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
         run: python -m farescout scan
 
       - name: Save fare history
