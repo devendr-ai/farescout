@@ -1,0 +1,4 @@
+# The scanner itself only needs the Python standard library (3.11+).
+# fast-flights powers the optional live check on Google Flights.
+fast-flights==3.1.0
+typing_extensions>=4.12  # fast-flights 3.1.0 imports it without declaring it

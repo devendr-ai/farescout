@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Farescout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Airfield wayfinding: route codes render as taxiway signs (black location sign + yellow direction sign). */
+:root {
+  --bg: #EBF0F5; --surface: #FFFFFF; --surface-2: #F4F7FA; --ink: #0E1A2B; --muted: #56667A; --line: #D3DCE6;
+  --sign: #15181D; --sign-fg: #FFC72C; --accent: #1C4BD6; --accent-soft: #E3EAFC;
+  --deal: #0B7F57; --deal-soft: #DDF3EA; --mistake: #B9410E; --mistake-soft: #FBE6DA;
+  --scrim: rgba(14, 26, 43, .45); --shadow: 0 1px 2px rgba(14,26,43,.06), 0 4px 14px rgba(14,26,43,.06);
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0A1019; --surface: #111A26; --surface-2: #162130; --ink: #E4EBF3; --muted: #8D9BAD; --line: #233244;
+    --sign: #05070A; --accent: #86A8FF; --accent-soft: #1A2846;
+    --deal: #3CCB93; --deal-soft: #0F2E24; --mistake: #FF9259; --mistake-soft: #3A1F12;
+    --scrim: rgba(0,0,0,.6); --shadow: 0 1px 2px rgba(0,0,0,.4);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-inline: 16px; padding-block: env(safe-area-inset-top, 0px) calc(48px + env(safe-area-inset-bottom, 0px)); }
+[hidden] { display: none !important; }
+.wrap { max-width: 1200px; margin: 0 auto; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent); }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-block: 18px; }
+.brand { display: inline-flex; text-decoration: none; font-family: var(--f-display); font-weight: 800; font-stretch: 80%; letter-spacing: .04em; font-size: 18px; border-radius: 3px; overflow: hidden; }
+.loc { background: var(--sign); color: var(--sign-fg); box-shadow: inset 0 0 0 2px var(--sign-fg); }
+.dir { background: var(--sign-fg); color: #15181D; }
+.brand .loc, .brand .dir { padding: 3px 9px; }
+.status { font-family: var(--f-mono); font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+
+.hero { padding-block: 20px 24px; display: grid; gap: 16px; }
+.hero h1 { font-family: var(--f-display); font-stretch: 112%; font-weight: 800; font-size: clamp(30px, 5.4vw, 52px); line-height: 1.02; margin: 0; text-wrap: balance; max-width: 18ch; }
+.hero p { margin: 0; color: var(--muted); max-width: 62ch; font-size: 16px; }
+.origins { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.olabel { font-family: var(--f-display); font-stretch: 90%; font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.obtn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 5px 10px 5px 5px; cursor: pointer; }
+.obtn .code { font-family: var(--f-display); font-stretch: 80%; font-weight: 800; letter-spacing: .05em; padding: 3px 7px; border-radius: 3px; background: var(--surface-2); color: var(--muted); }
+.obtn[aria-pressed="true"] { border-color: var(--ink); }
+.obtn[aria-pressed="true"] .code { background: var(--sign); color: var(--sign-fg); box-shadow: inset 0 0 0 2px var(--sign-fg); }
+.hint { font-size: 12px; color: var(--muted); }
+.hint code { font-family: var(--f-mono); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
+@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.filters { display: grid; gap: 12px; padding-block: 4px 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.regions { display: flex; flex-wrap: wrap; gap: 6px; }
+.rbtn { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; cursor: pointer; font-size: 14px; display: inline-flex; gap: 6px; align-items: baseline; }
+.rbtn .n { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.rbtn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.rbtn[aria-pressed="true"] .n { color: var(--bg); opacity: .7; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; }
+.ctl { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.ctl select { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 14px; color: var(--ink); }
+.ctl input[type=range] { width: 150px; accent-color: var(--accent); }
+.ctl output { font-family: var(--f-mono); color: var(--ink); }
+.check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; padding-block: 6px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.summary { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 14px; }
+.summary h2 { font-family: var(--f-display); font-weight: 700; font-size: 20px; margin: 0; }
+.summary p { margin: 0; color: var(--muted); font-size: 14px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 14px; }
+.deal { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 8px; align-content: start; cursor: pointer; transition: border-color .15s, transform .15s; min-width: 0; }
+.deal:hover { border-color: var(--accent); transform: translateY(-1px); }
+.deal.is-mistake { border-color: color-mix(in srgb, var(--mistake) 45%, var(--line)); }
+.deal.is-stale { opacity: .6; }
+.deal-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sign { display: inline-flex; border-radius: 3px; overflow: hidden; font-family: var(--f-display); font-stretch: 78%; font-weight: 800; letter-spacing: .05em; font-size: 17px; line-height: 1; }
+.sign .loc, .sign .dir { padding: 6px 8px; }
+.sign .dir { display: inline-flex; align-items: center; gap: 5px; }
+.sign svg { width: 14px; height: 14px; }
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-radius: 4px; padding: 3px 7px; }
+.tag-mistake { color: var(--mistake); background: var(--mistake-soft); }
+.tag-live { color: var(--deal); background: var(--deal-soft); }
+.tag-stale { color: var(--muted); background: var(--surface-2); }
+.deal-city { margin: 2px 0 0; font-family: var(--f-display); font-weight: 700; font-size: 19px; line-height: 1.15; display: grid; }
+.deal-city span { font-family: var(--f-body); font-weight: 400; font-size: 13px; color: var(--muted); }
+.deal-price { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.deal-price strong { font-family: var(--f-display); font-stretch: 95%; font-weight: 800; font-size: 28px; font-variant-numeric: tabular-nums; }
+.off { font-family: var(--f-mono); font-weight: 500; font-size: 13px; color: var(--deal); background: var(--deal-soft); border-radius: 4px; padding: 2px 6px; }
+.is-mistake .off { color: var(--mistake); background: var(--mistake-soft); }
+.was { font-size: 13px; color: var(--muted); }
+.deal-meta { list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px dashed var(--line); display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.deal-meta li { white-space: nowrap; }
+.empty { grid-column: 1 / -1; background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 28px; text-align: center; color: var(--muted); display: grid; gap: 10px; justify-items: center; }
+.empty strong { color: var(--ink); font-family: var(--f-display); font-size: 18px; }
+.empty code { font-family: var(--f-mono); background: var(--surface-2); padding: 2px 6px; border-radius: 4px; }
+.btn { border: 0; background: var(--accent); color: var(--surface); border-radius: 8px; padding: 9px 14px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+
+.rail { display: grid; gap: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; }
+.panel h3 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 17px; }
+.panel p, .panel dl { margin: 0; font-size: 14px; color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+.kv dd { margin: 0; color: var(--ink); font-family: var(--f-mono); font-size: 13px; text-align: right; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; font-size: 14px; color: var(--muted); counter-increment: s; }
+.steps li::before { content: counter(s); font-family: var(--f-display); font-stretch: 80%; font-weight: 800; background: var(--sign-fg); color: #15181D; border-radius: 3px; height: 24px; display: grid; place-items: center; }
+.steps b { color: var(--ink); }
+
+.overlay { position: fixed; inset: 0; background: var(--scrim); z-index: 50; display: grid; place-items: center; padding: 16px; }
+.sheet { background: var(--surface); border-radius: 14px; width: min(660px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 20px; display: grid; gap: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+@media (max-width: 560px) { .overlay { place-items: end center; padding: 0; } .sheet { border-radius: 14px 14px 0 0; max-height: 92%; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); } }
+.sheet-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.sheet-head .sign { font-size: 22px; }
+.close { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; width: 36px; height: 36px; cursor: pointer; font-size: 18px; flex: none; }
+.sheet h2 { margin: 6px 0 0; font-family: var(--f-display); font-size: 26px; font-weight: 800; line-height: 1.1; }
+.sub { color: var(--muted); font-size: 14px; margin: 2px 0 0; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; }
+.facts div { background: var(--surface-2); border-radius: 8px; padding: 10px; min-width: 0; }
+.facts dt { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.facts dd { margin: 2px 0 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.chart-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.chart-box h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 400; }
+.chart-box svg { width: 100%; height: auto; display: block; }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.fine { font-size: 12px; color: var(--muted); margin: 0; }
+@media (prefers-reduced-motion: reduce) { .deal { transition: none; } .deal:hover { transform: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./" aria-label="Farescout home"><span class="loc">FARE</span><span class="dir">SCOUT</span></a>
+    <span class="status" id="status">Loading…</span>
+  </header>
+
+  <section class="hero">
+    <h1>Cheap flights from your airports.</h1>
+    <p>Fares from your home airports, compared with each route's own normal price. The best ones are re-checked live on Google Flights.</p>
+    <div class="origins" id="origins" role="group" aria-label="Home airports"></div>
+  </section>
+
+  <div class="layout">
+    <main>
+      <div class="filters" id="filters">
+        <div class="regions" id="regions" role="group" aria-label="Destination region"></div>
+        <div class="controls">
+          <label class="ctl">Departure month <select id="f-month"></select></label>
+          <label class="ctl">At least <output id="f-off-out">30%</output> below typical
+            <input id="f-off" type="range" min="30" max="80" step="5" value="30">
+          </label>
+          <label class="ctl">Sort by
+            <select id="f-sort">
+              <option value="discount">Biggest discount</option>
+              <option value="price">Lowest price</option>
+              <option value="date">Soonest departure</option>
+            </select>
+          </label>
+          <label class="check"><input id="f-nonstop" type="checkbox"> Nonstop only</label>
+          <label class="check"><input id="f-live" type="checkbox"> Live-checked only</label>
+        </div>
+      </div>
+      <div class="summary" id="summary"></div>
+      <div class="grid" id="grid"></div>
+    </main>
+
+    <aside class="rail">
+      <section class="panel">
+        <h3>Last scan</h3>
+        <dl class="kv" id="scan-stats"></dl>
+      </section>
+      <section class="panel">
+        <h3>How deals are found</h3>
+        <ol class="steps">
+          <li><span><b>Scan.</b> Every 6 hours, pull the cheapest roundtrip from each home airport to every destination, for each of the next 10 months.</span></li>
+          <li><span><b>Compare.</b> Check each fare against the route's 90-day median for that month. Until history builds up, compare with the route's other months.</span></li>
+          <li><span><b>Confirm.</b> Re-check the biggest drops live on Google Flights, then send the best to Telegram.</span></li>
+        </ol>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title"></div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const ARROW = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h10M8 3.5 12.5 8 8 12.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"/></svg>';
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const FMT = {};
+  function money(v, cur) {
+    cur = (cur || 'usd').toUpperCase();
+    if (!FMT[cur]) FMT[cur] = new Intl.NumberFormat(cur === 'INR' ? 'en-IN' : 'en-US', { style: 'currency', currency: cur, maximumFractionDigits: 0 });
+    return FMT[cur].format(v);
+  }
+  const ym = s => { const [y, m] = s.split('-').map(Number); return new Date(y, m - 1, 1); };
+  const monthShort = s => ym(s).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }).replace(' ', " '");
+  const monthLong = s => ym(s).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const day = s => { if (!s) return '?'; const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); };
+  const stopsLabel = n => n == null ? 'Stops unknown' : n === 0 ? 'Nonstop' : n + (n > 1 ? ' stops' : ' stop');
+  function ago(iso) {
+    const h = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 3600000));
+    return h < 1 ? 'just now' : h < 48 ? h + 'h ago' : Math.round(h / 24) + 'd ago';
+  }
+
+  let DATA = null;
+  const state = { sel: [], region: 'all', month: 'any', minOff: 30, nonstop: false, live: false, sort: 'discount' };
+  try { Object.assign(state, JSON.parse(localStorage.getItem('farescout-ui') || '{}')); } catch (e) { /* ignore */ }
+  const save = () => { try { localStorage.setItem('farescout-ui', JSON.stringify(state)); } catch (e) { /* ignore */ } };
+
+  // ---------- sample data, same shape as deals.json ----------
+  function sampleData() {
+    const today = new Date();
+    const months = Array.from({ length: 10 }, (_, i) => { const d = new Date(today.getFullYear(), today.getMonth() + i, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); });
+    const D = [
+      ['NYC', 'LIS', 'Lisbon', 'PT', 'Portugal', 'eu', 820, 'TP', 0], ['NYC', 'ATH', 'Athens', 'GR', 'Greece', 'eu', 1050, 'DL', 1],
+      ['NYC', 'NRT', 'Tokyo', 'JP', 'Japan', 'as', 1380, 'NH', 0], ['NYC', 'CUN', 'Cancún', 'MX', 'Mexico', 'la', 520, 'B6', 0],
+      ['NYC', 'REK', 'Reykjavík', 'IS', 'Iceland', 'eu', 690, 'FI', 0], ['NYC', 'LAX', 'Los Angeles', 'US', 'United States', 'na', 390, 'AA', 0],
+      ['NYC', 'BOG', 'Bogotá', 'CO', 'Colombia', 'la', 560, 'AV', 0], ['NYC', 'MRU', 'Mauritius', 'MU', 'Mauritius', 'af', 1650, 'EK', 1],
+      ['DEL', 'BKK', 'Bangkok', 'TH', 'Thailand', 'as', 26000, 'TG', 0], ['DEL', 'DXB', 'Dubai', 'AE', 'United Arab Emirates', 'me', 27500, 'EK', 0],
+      ['DEL', 'LON', 'London', 'GB', 'United Kingdom', 'eu', 72000, 'AI', 0], ['DEL', 'GOI', 'Goa', 'IN', 'India', 'in', 11500, '6E', 0],
+      ['DEL', 'IXL', 'Leh', 'IN', 'India', 'in', 9800, 'AI', 0], ['DEL', 'DPS', 'Bali', 'ID', 'Indonesia', 'as', 38000, 'SQ', 1],
+      ['BOM', 'SIN', 'Singapore', 'SG', 'Singapore', 'as', 31000, 'SQ', 0], ['BOM', 'IST', 'Istanbul', 'TR', 'Türkiye', 'eu', 52000, 'TK', 0],
+      ['BOM', 'MLE', 'Malé', 'MV', 'Maldives', 'as', 29000, '6E', 1], ['BOM', 'NYC', 'New York', 'US', 'United States', 'na', 98000, 'AI', 0],
+      ['BOM', 'CCU', 'Kolkata', 'IN', 'India', 'in', 10500, '6E', 0], ['BOM', 'SEZ', 'Seychelles', 'SC', 'Seychelles', 'af', 48000, 'ET', 1]
+    ];
+    const AL = { TP: 'TAP Air Portugal', DL: 'Delta', NH: 'ANA', B6: 'JetBlue', FI: 'Icelandair', AA: 'American', AV: 'Avianca', EK: 'Emirates', TG: 'Thai Airways', AI: 'Air India', '6E': 'IndiGo', SQ: 'Singapore Airlines', TK: 'Turkish Airlines', ET: 'Ethiopian' };
+    const ON = { NYC: 'New York', DEL: 'Delhi', BOM: 'Mumbai' };
+    let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const deals = D.map(([o, d, city, cc, country, region, base, al, stops]) => {
+      const cur = o === 'NYC' ? 'usd' : 'inr';
+      const mistake = r() < 0.15;
+      const off = mistake ? 0.66 + r() * 0.12 : 0.40 + r() * 0.22;
+      const price = Math.round(base * (1 - off));
+      const mi = 1 + Math.floor(r() * 7), month = months[mi];
+      const dep = new Date(ym(month).getFullYear(), ym(month).getMonth(), 3 + Math.floor(r() * 22));
+      const ret = new Date(dep); ret.setDate(dep.getDate() + (cc === (o === 'NYC' ? 'US' : 'IN') ? 4 : 8) + Math.floor(r() * 6));
+      const isoD = x => x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+      const hist = []; let v = base;
+      for (let k = 30; k >= 1; k--) { v += (base - v) * 0.1 + base * (r() - 0.5) * 0.06; const t = new Date(today); t.setDate(t.getDate() - k); hist.push([isoD(t), Math.round(v)]); }
+      hist.push([isoD(today), price]);
+      const vr = r(); const status = vr < 0.55 ? 'confirmed' : vr < 0.7 ? 'higher' : 'unchecked';
+      const live = status === 'confirmed' ? Math.round(price * (1 + r() * 0.05)) : status === 'higher' ? Math.round(price * 1.4) : null;
+      return {
+        id: o + '-' + d + '-' + month, origin: o, origin_name: ON[o], origin_airport: o, destination: d, destination_name: city, destination_airport: d,
+        country: cc, country_name: country, region, month, currency: cur, price, baseline: base, baseline_source: r() < 0.6 ? 'history' : 'other_months',
+        off: Math.round(off * 1000) / 1000, mistake, airline: al, airline_name: AL[al], transfers: stops, return_transfers: stops,
+        depart_date: isoD(dep), return_date: isoD(ret), aviasales_url: null,
+        google_url: 'https://www.google.com/travel/flights?q=' + encodeURIComponent(`Flights from ${o} to ${d} on ${isoD(dep)} through ${isoD(ret)}`),
+        verified: { status, live_price: live, checked_at: status === 'unchecked' ? null : new Date().toISOString() }, history: hist
+      };
+    }).sort((a, b) => b.off - a.off);
+    return {
+      generated_at: new Date(Date.now() - 2 * 3600000).toISOString(), sample: true,
+      origins: [{ code: 'NYC', name: 'New York', currency: 'usd' }, { code: 'DEL', name: 'Delhi', currency: 'inr' }, { code: 'BOM', name: 'Mumbai', currency: 'inr' }],
+      regions: { na: 'US & Canada', in: 'India', eu: 'Europe', as: 'Asia', me: 'Middle East', la: 'Latin America', cb: 'Caribbean', af: 'Africa', oc: 'Oceania', other: 'Other' },
+      stats: { fares: 2140, months, failed_requests: 0, live_checks: 12 }, deals
+    };
+  }
+
+  // ---------- render ----------
+  function renderOrigins() {
+    $('origins').innerHTML = '<span class="olabel">From</span>' + DATA.origins.map(o =>
+      `<button type="button" class="obtn" data-origin="${esc(o.code)}" aria-pressed="${state.sel.includes(o.code)}"><span class="code">${esc(o.code)}</span>${esc(o.name)}</button>`
+    ).join('') + `<span class="hint">Edit home airports in <code>config.toml</code></span>`;
+  }
+
+  function renderStats() {
+    const s = DATA.stats || {};
+    const rows = [
+      ['Updated', ago(DATA.generated_at)],
+      ['Fares scanned', (s.fares || 0).toLocaleString()],
+      ['Deals found', DATA.deals.length.toLocaleString()],
+      ['Live checks this run', s.live_checks ?? 0]
+    ];
+    if (s.failed_requests) rows.push(['Failed requests', s.failed_requests]);
+    $('scan-stats').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+    $('status').textContent = DATA.sample ? 'Sample data · run a scan for real deals' : 'Scanned ' + ago(DATA.generated_at);
+  }
+
+  function renderMonths() {
+    const months = [...new Set(DATA.deals.map(d => d.month))].sort();
+    $('f-month').innerHTML = '<option value="any">Any month</option>' + months.map(m => `<option value="${m}">${monthLong(m)}</option>`).join('');
+    $('f-month').value = months.includes(state.month) ? state.month : 'any';
+    state.month = $('f-month').value;
+  }
+
+  const isStale = d => d.verified && (d.verified.status === 'higher' || d.verified.status === 'gone');
+
+  function filtered() {
+    return DATA.deals.filter(d =>
+      state.sel.includes(d.origin) &&
+      d.off * 100 >= state.minOff - 0.001 &&
+      (state.month === 'any' || d.month === state.month) &&
+      (!state.nonstop || (d.transfers === 0 && (d.return_transfers ?? 0) === 0)) &&
+      (!state.live || (d.verified && d.verified.status === 'confirmed')));
+  }
+
+  function cardHTML(d) {
+    const v = d.verified || {};
+    let tags = d.mistake ? '<span class="tag tag-mistake">Possible mistake fare</span>' : '';
+    if (v.status === 'confirmed') tags += '<span class="tag tag-live">Live ✓</span>';
+    else if (v.status === 'higher') tags += `<span class="tag tag-stale">Now ${money(v.live_price, d.currency)}</span>`;
+    else if (v.status === 'gone') tags += '<span class="tag tag-stale">Gone</span>';
+    return `<article class="deal${d.mistake ? ' is-mistake' : ''}${isStale(d) ? ' is-stale' : ''}" data-id="${esc(d.id)}" tabindex="0" role="button"
+      aria-label="${esc(d.origin)} to ${esc(d.destination_name)}, ${money(d.price, d.currency)}, ${Math.round(d.off * 100)}% below typical">
+      <div class="deal-top"><div class="sign" aria-hidden="true"><span class="loc">${esc(d.origin)}</span><span class="dir">${ARROW}${esc(d.destination)}</span></div>${tags ? `<span class="tags">${tags}</span>` : ''}</div>
+      <h3 class="deal-city">${esc(d.destination_name)}<span>${esc(d.country_name)}</span></h3>
+      <div class="deal-price"><strong>${money(d.price, d.currency)}</strong><span class="off">${Math.round(d.off * 100)}% off</span></div>
+      <div class="was">Typical <s>${money(d.baseline, d.currency)}</s> · roundtrip</div>
+      <ul class="deal-meta"><li>${day(d.depart_date)} → ${day(d.return_date)}</li><li>${stopsLabel(d.transfers)}</li><li>${esc(d.airline_name)}</li></ul>
+    </article>`;
+  }
+
+  let current = [];
+  function renderDeals() {
+    const grid = $('grid');
+    if (!state.sel.length) {
+      $('regions').innerHTML = ''; $('summary').innerHTML = '';
+      grid.innerHTML = '<div class="empty"><strong>Pick a home airport above</strong><span>Deals from the airports you select show here.</span></div>';
+      return;
+    }
+    const base = filtered();
+    const counts = {}; base.forEach(d => { counts[d.region] = (counts[d.region] || 0) + 1; });
+    if (state.region !== 'all' && !counts[state.region]) state.region = 'all';
+    const names = DATA.regions || {};
+    $('regions').innerHTML = `<button type="button" class="rbtn" data-region="all" aria-pressed="${state.region === 'all'}">Everywhere <span class="n">${base.length}</span></button>` +
+      Object.keys(counts).sort((a, b) => counts[b] - counts[a]).map(k =>
+        `<button type="button" class="rbtn" data-region="${k}" aria-pressed="${state.region === k}">${esc(names[k] || 'Other')} <span class="n">${counts[k]}</span></button>`).join('');
+
+    current = base.filter(d => state.region === 'all' || d.region === state.region);
+    const usd = d => d.currency === 'inr' ? d.price / 84 : d.price;
+    const sorters = { discount: (a, b) => b.off - a.off, price: (a, b) => usd(a) - usd(b), date: (a, b) => a.depart_date.localeCompare(b.depart_date) };
+    current.sort(sorters[state.sort] || sorters.discount);
+    // Deals that went up on the live check sink to the bottom.
+    current.sort((a, b) => isStale(a) - isStale(b));
+
+    const codes = state.sel.join(', ');
+    if (!current.length) {
+      $('summary').innerHTML = `<h2>No deals from ${esc(codes)}</h2>`;
+      grid.innerHTML = '<div class="empty"><strong>Nothing matches these filters</strong><span>Try a lower discount, any month, or turn off nonstop and live-checked only.</span><button type="button" class="btn ghost" id="reset">Reset filters</button></div>';
+      return;
+    }
+    const best = current.reduce((a, b) => (b.off > a.off ? b : a));
+    const live = current.filter(d => d.verified && d.verified.status === 'confirmed').length;
+    $('summary').innerHTML = `<h2>${current.length} deal${current.length > 1 ? 's' : ''} from ${esc(codes)}</h2>
+      <p>Biggest drop: ${Math.round(best.off * 100)}% off to ${esc(best.destination_name)} · ${live} live-checked</p>`;
+    grid.innerHTML = current.map(cardHTML).join('');
+  }
+
+  function renderAll() { renderOrigins(); renderStats(); renderMonths(); renderDeals(); }
+
+  // ---------- detail ----------
+  function chartSVG(d) {
+    const h = d.history || [];
+    if (h.length < 2) return '<p class="fine">Price history builds up after a few days of scans.</p>';
+    const W = 600, H = 170, L = 8, R = 92, T = 14, B = 26;
+    const vals = h.map(p => p[1]);
+    const lo = Math.min(...vals, d.price) * 0.9, hi = Math.max(...vals, d.baseline) * 1.05;
+    const sx = i => L + (i / (h.length - 1)) * (W - L - R);
+    const sy = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    const line = vals.map((v, i) => (i ? 'L' : 'M') + sx(i).toFixed(1) + ' ' + sy(v).toFixed(1)).join(' ');
+    const area = line + ` L${sx(h.length - 1).toFixed(1)} ${H - B} L${sx(0).toFixed(1)} ${H - B} Z`;
+    const by = sy(d.baseline), ex = sx(h.length - 1), ey = sy(vals[vals.length - 1]);
+    const col = d.mistake ? 'var(--mistake)' : 'var(--deal)';
+    const grid = [0.25, 0.5, 0.75].map(f => `<line x1="${L}" x2="${W - R}" y1="${T + f * (H - T - B)}" y2="${T + f * (H - T - B)}" stroke="var(--line)"/>`).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily low price, typical ${money(d.baseline, d.currency)}, latest ${money(vals[vals.length - 1], d.currency)}">
+      ${grid}
+      <path d="${area}" fill="var(--accent)" fill-opacity=".10"/>
+      <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+      <line x1="${L}" x2="${W - R}" y1="${by}" y2="${by}" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="4 4"/>
+      <text x="${W - R + 8}" y="${by + 4}" font-size="12" fill="var(--muted)" font-family="IBM Plex Mono, monospace">typical</text>
+      <circle cx="${ex}" cy="${ey}" r="5" fill="${col}" stroke="var(--surface)" stroke-width="2"/>
+      <text x="${ex + 10}" y="${Math.min(ey + 4, H - B)}" font-size="13" font-weight="700" fill="${col}" font-family="Archivo, sans-serif">${money(vals[vals.length - 1], d.currency)}</text>
+      <text x="${L}" y="${H - 6}" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${esc(h[0][0])}</text>
+      <text x="${W - R}" y="${H - 6}" font-size="11" fill="var(--muted)" text-anchor="end" font-family="IBM Plex Mono, monospace">${esc(h[h.length - 1][0])}</text>
+    </svg>`;
+  }
+
+  let lastFocus = null;
+  function openDetail(id) {
+    const d = current.find(x => x.id === id); if (!d) return;
+    const v = d.verified || {};
+    const liveText = v.status === 'confirmed' ? `${money(v.live_price, d.currency)} on Google Flights, ${ago(v.checked_at)}`
+      : v.status === 'higher' ? `Now ${money(v.live_price, d.currency)} on Google Flights (checked ${ago(v.checked_at)})`
+      : v.status === 'gone' ? `Not found on Google Flights (checked ${ago(v.checked_at)})`
+      : v.status === 'error' ? 'Google Flights check failed' : 'Not checked yet';
+    const baseText = d.baseline_source === 'history' ? 'median daily low, last 90 days' : "median of this route's other months";
+    $('sheet').innerHTML = `
+      <div class="sheet-head">
+        <div>
+          <div class="sign" aria-hidden="true"><span class="loc">${esc(d.origin_airport)}</span><span class="dir">${ARROW}${esc(d.destination_airport)}</span></div>
+          <h2 id="sheet-title">${esc(d.origin_name)} to ${esc(d.destination_name)}</h2>
+          <p class="sub">${esc(d.country_name)} · economy · roundtrip · ${esc(d.airline_name)} · ${stopsLabel(d.transfers)}</p>
+        </div>
+        <button type="button" class="close" id="close" aria-label="Close">×</button>
+      </div>
+      <dl class="facts">
+        <div><dt>Deal price</dt><dd style="color:${d.mistake ? 'var(--mistake)' : 'var(--deal)'}">${money(d.price, d.currency)}</dd></div>
+        <div><dt>Typical</dt><dd>${money(d.baseline, d.currency)}</dd></div>
+        <div><dt>Below typical</dt><dd>${Math.round(d.off * 100)}%${d.mistake ? ' · possible mistake' : ''}</dd></div>
+        <div><dt>Dates</dt><dd>${day(d.depart_date)} → ${day(d.return_date)}</dd></div>
+      </dl>
+      <p class="fine">Typical = ${baseText}. Live check: ${esc(liveText)}.</p>
+      <div class="chart-box"><h4>Daily low for ${monthShort(d.month)} departures</h4>${chartSVG(d)}</div>
+      <div class="actions">
+        <a class="btn" href="${esc(d.google_url)}" target="_blank" rel="noopener">Open this trip on Google Flights</a>
+        ${d.aviasales_url ? `<a class="btn ghost" href="${esc(d.aviasales_url)}" target="_blank" rel="noopener">Aviasales</a>` : ''}
+      </div>
+      <p class="fine">${d.mistake ? 'Mistake fares can vanish within hours and airlines sometimes cancel them. Wait for a ticket number before booking hotels. ' : ''}Cached prices can be up to 48 hours old.${DATA.sample ? ' This is sample data.' : ''}</p>`;
+    lastFocus = document.activeElement;
+    $('overlay').hidden = false;
+    $('close').focus();
+  }
+  function closeDetail() { $('overlay').hidden = true; if (lastFocus) lastFocus.focus(); }
+
+  // ---------- events ----------
+  $('origins').addEventListener('click', e => {
+    const b = e.target.closest('[data-origin]'); if (!b) return;
+    const c = b.dataset.origin;
+    state.sel = state.sel.includes(c) ? state.sel.filter(x => x !== c) : [...state.sel, c];
+    save(); renderOrigins(); renderDeals();
+  });
+  $('regions').addEventListener('click', e => { const b = e.target.closest('[data-region]'); if (b) { state.region = b.dataset.region; save(); renderDeals(); } });
+  $('f-month').addEventListener('change', e => { state.month = e.target.value; save(); renderDeals(); });
+  $('f-off').addEventListener('input', e => { state.minOff = +e.target.value; $('f-off-out').textContent = state.minOff + '%'; save(); renderDeals(); });
+  $('f-sort').addEventListener('change', e => { state.sort = e.target.value; save(); renderDeals(); });
+  $('f-nonstop').addEventListener('change', e => { state.nonstop = e.target.checked; save(); renderDeals(); });
+  $('f-live').addEventListener('change', e => { state.live = e.target.checked; save(); renderDeals(); });
+  $('grid').addEventListener('click', e => {
+    if (e.target.id === 'reset') {
+      Object.assign(state, { region: 'all', month: 'any', minOff: 30, nonstop: false, live: false });
+      syncControls(); save(); renderAll(); return;
+    }
+    if (e.target.id === 'sample') { boot(sampleData()); return; }
+    const c = e.target.closest('.deal'); if (c) openDetail(c.dataset.id);
+  });
+  $('grid').addEventListener('keydown', e => {
+    const c = e.target.closest('.deal');
+    if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDetail(c.dataset.id); }
+  });
+  $('overlay').addEventListener('click', e => { if (e.target === $('overlay') || e.target.closest('#close')) closeDetail(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('overlay').hidden) closeDetail(); });
+
+  function syncControls() {
+    $('f-off').value = state.minOff; $('f-off-out').textContent = state.minOff + '%';
+    $('f-sort').value = state.sort; $('f-nonstop').checked = state.nonstop; $('f-live').checked = state.live;
+  }
+
+  function boot(data) {
+    DATA = data;
+    const codes = DATA.origins.map(o => o.code);
+    state.sel = (state.sel || []).filter(c => codes.includes(c));
+    if (!state.sel.length) state.sel = codes.slice();
+    $('filters').hidden = false;
+    syncControls(); renderAll();
+  }
+
+  function noData() {
+    $('status').textContent = 'No scan yet';
+    $('filters').hidden = true;
+    $('origins').innerHTML = '';
+    $('scan-stats').innerHTML = '<dt>Status</dt><dd>No deals.json yet</dd>';
+    $('grid').innerHTML = `<div class="empty"><strong>No scan results yet</strong>
+      <span>Run <code>python -m farescout scan</code>, or wait for the scheduled GitHub Action.</span>
+      <button type="button" class="btn ghost" id="sample">Preview with sample deals</button></div>`;
+  }
+
+  fetch('deals.json', { cache: 'no-store' })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(boot)
+    .catch(noData);
+})();
+</script>
+</body>
+</html>

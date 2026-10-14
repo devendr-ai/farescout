@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Fare history and reference data (kept in the GitHub Actions cache).
+data/
+
+# Generated on each scan and published to GitHub Pages.
+docs/deals.json
