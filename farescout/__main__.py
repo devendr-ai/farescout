@@ -84,9 +84,12 @@ def cmd_scan(args: argparse.Namespace) -> int:
             continue
         status, live, url = check_live(deal, cfg.verify.tolerance)
         checks += 1
-        if status != "unchecked":
+        if status in ("confirmed", "higher"):
             verifications[key] = store.put_verification(key, status, live, url)
-            log.info("live check %s-%s %s: %s %s", deal.origin, deal.destination, deal.month, status, live or "")
+        elif status == "error":
+            # Show this run's failure, but don't cache it, so the next run retries.
+            verifications[key] = {"checked_at": utcnow().isoformat(), "status": status, "live_price": None, "url": url}
+        log.info("live check %s-%s %s: %s %s", deal.origin, deal.destination, deal.month, status, live or "")
         time.sleep(cfg.verify.delay_seconds)
     store.db.commit()
 

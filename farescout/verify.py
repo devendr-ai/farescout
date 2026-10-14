@@ -1,7 +1,7 @@
 """Confirm cached deals against live Google Flights prices via the fast-flights library.
 
 Keep request volume low (a few dozen checks a day). This makes no attempt to get
-around blocks: if Google refuses a request, the deal is shown as unchecked.
+around blocks: if Google refuses a request, the deal is shown as not checked.
 """
 
 from __future__ import annotations
@@ -58,7 +58,12 @@ def _build_query(deal: Deal):
 
 
 def check_live(deal: Deal, tolerance: float) -> tuple[str, float | None, str | None]:
-    """Return (status, live_price, url). Status: confirmed | higher | gone | error | unchecked."""
+    """Return (status, live_price, url). Status: confirmed | higher | error | unchecked.
+
+    An empty answer is reported as "error", not as sold out: Google returns empty or
+    error pages to rate-limited and cloud IPs for routes that do have flights, so an
+    empty result can't be told apart from a real "no flights on these dates".
+    """
     q = _build_query(deal)
     if q is None:
         return "unchecked", None, None
@@ -70,13 +75,15 @@ def check_live(deal: Deal, tolerance: float) -> tuple[str, float | None, str | N
     try:
         results = get_flights(q)
     except FlightsNotFound:
-        return "gone", None, url
+        log.warning("live check for %s-%s got no results from Google", deal.origin, deal.destination)
+        return "error", None, url
     except Exception as e:  # network errors, blocks, parser changes
         log.warning("live check failed for %s-%s: %s", deal.origin, deal.destination, e)
         return "error", None, url
     prices = [r.price for r in results if getattr(r, "price", None)]
     if not prices:
-        return "gone", None, url
+        log.warning("live check for %s-%s got no prices from Google", deal.origin, deal.destination)
+        return "error", None, url
     live = float(min(prices))
     status = "confirmed" if live <= deal.price * (1 + tolerance) else "higher"
     return status, live, url

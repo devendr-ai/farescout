@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS route_daily (
 CREATE TABLE IF NOT EXISTS verifications (
     trip_key   TEXT PRIMARY KEY,  -- origin|destination|depart|return|currency
     checked_at TEXT NOT NULL,
-    status     TEXT NOT NULL,     -- confirmed | higher | gone | error | unchecked
+    status     TEXT NOT NULL,     -- confirmed | higher
     live_price REAL,
     url        TEXT
 );
@@ -48,6 +48,8 @@ class Store:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path))
         self.db.executescript(SCHEMA)
+        # Version 0.1.0 cached empty Google answers as "gone"; those were unreliable.
+        self.db.execute("DELETE FROM verifications WHERE status NOT IN ('confirmed', 'higher')")
 
     def close(self) -> None:
         self.db.commit()
