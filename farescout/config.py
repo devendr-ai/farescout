@@ -34,6 +34,17 @@ class VerifyRules:
 
 
 @dataclass(frozen=True)
+class SerpApiRules:
+    # Live checks for possible mistake fares through SerpApi (needs SERPAPI_API_KEY).
+    enabled: bool = True
+    monthly_budget: int = 240  # free plan: 250
+    daily_budget: int = 8
+    max_per_run: int = 3
+    # Don't re-check the same trip within this many hours.
+    cache_hours: int = 24
+
+
+@dataclass(frozen=True)
 class AlertRules:
     min_off: float = 0.50
     require_live_check: bool = True
@@ -62,6 +73,7 @@ class Config:
     special_offers: bool = True
     deals: DealRules = field(default_factory=DealRules)
     verify: VerifyRules = field(default_factory=VerifyRules)
+    serpapi: SerpApiRules = field(default_factory=SerpApiRules)
     alerts: AlertRules = field(default_factory=AlertRules)
     feeds: FeedRules = field(default_factory=FeedRules)
 
@@ -104,6 +116,7 @@ def load(path: str | Path) -> Config:
         special_offers=bool(scan.get("special_offers", True)),
         deals=deals,
         verify=VerifyRules(**raw.get("verify", {})),
+        serpapi=SerpApiRules(**raw.get("serpapi", {})),
         alerts=AlertRules(**alerts_raw),
         feeds=FeedRules(**feeds_raw),
     )

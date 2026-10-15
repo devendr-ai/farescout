@@ -42,6 +42,8 @@ def format_deal(d: dict) -> str:
     live = d.get("verified") or {}
     if live.get("status") == "confirmed":
         check = f"Live-checked on Google Flights: {e(d['price_label_live'])}"
+        if d.get("google_typical_label"):
+            check += f" (usually {e(d['google_typical_label'])})"
     elif live.get("status") == "higher":
         check = f"Google Flights shows {e(d['price_label_live'])} now"
     else:

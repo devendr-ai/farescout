@@ -97,6 +97,7 @@ class SendAlertsTests(unittest.TestCase):
         from farescout.store import Store
 
         self.store = Store(":memory:")
+        self.addCleanup(self.store.db.close)
         self.cfg = Config(origins=[Origin("SEA", "usd", ("us",))])
         self.deals = [deal("NRT", off=0.6), deal("LIS", off=0.7, mistake=True, name="Lisbon")]
         self.posts = [

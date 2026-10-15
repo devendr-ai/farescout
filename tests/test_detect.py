@@ -18,6 +18,7 @@ def fare(price, dest="LIS"):
 class DetectTests(unittest.TestCase):
     def setUp(self):
         self.store = Store(":memory:")
+        self.addCleanup(self.store.db.close)
         self.history = lambda o, d, m, c, since, before: self.store.history(o, d, m, c, since, before)
 
     def seed(self, price, days, month="2027-01", dest="LIS"):

@@ -418,7 +418,8 @@ a { color: var(--accent); }
   function openDetail(id) {
     const d = current.find(x => x.id === id); if (!d) return;
     const v = d.verified || {};
-    const liveText = v.status === 'confirmed' ? `${money(v.live_price, d.currency)} on Google Flights, ${ago(v.checked_at)}`
+    const typical = d.google_typical_label ? `; Google says this trip usually costs ${d.google_typical_label}` : '';
+    const liveText = v.status === 'confirmed' ? `${money(v.live_price, d.currency)} on Google Flights, ${ago(v.checked_at)}${typical}`
       : v.status === 'higher' ? `Now ${money(v.live_price, d.currency)} on Google Flights (checked ${ago(v.checked_at)})`
       : v.status === 'gone' ? `Not found on Google Flights (checked ${ago(v.checked_at)})`
       : v.status === 'error' ? 'Google Flights check failed' : 'Not checked yet';

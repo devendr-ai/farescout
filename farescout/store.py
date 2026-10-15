@@ -35,7 +35,11 @@ CREATE TABLE IF NOT EXISTS verifications (
     checked_at TEXT NOT NULL,
     status     TEXT NOT NULL,     -- confirmed | higher
     live_price REAL,
-    url        TEXT
+    url        TEXT,
+    source       TEXT,            -- google (fast-flights) | serpapi
+    price_level  TEXT,            -- Google's "low" | "typical" | "high" (SerpApi only)
+    typical_low  REAL,            -- Google's typical price range (SerpApi only)
+    typical_high REAL
 );
 CREATE TABLE IF NOT EXISTS alerts (
     origin      TEXT NOT NULL,
@@ -70,6 +74,10 @@ class Store:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path))
         self.db.executescript(SCHEMA)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(verifications)")}
+        for col, kind in (("source", "TEXT"), ("price_level", "TEXT"), ("typical_low", "REAL"), ("typical_high", "REAL")):
+            if col not in cols:  # databases from before these columns existed
+                self.db.execute(f"ALTER TABLE verifications ADD COLUMN {col} {kind}")
         # Version 0.1.0 cached empty Google answers as "gone"; those were unreliable.
         self.db.execute("DELETE FROM verifications WHERE status NOT IN ('confirmed', 'higher')")
 
@@ -128,22 +136,40 @@ class Store:
 
     def get_verification(self, trip_key: str, max_age_hours: float) -> dict | None:
         row = self.db.execute(
-            "SELECT checked_at, status, live_price, url FROM verifications WHERE trip_key=?", (trip_key,)
+            "SELECT checked_at, status, live_price, url, source, price_level, typical_low, typical_high "
+            "FROM verifications WHERE trip_key=?",
+            (trip_key,),
         ).fetchone()
         if not row:
             return None
         checked_at = datetime.fromisoformat(row[0])
         if utcnow() - checked_at > timedelta(hours=max_age_hours):
             return None
-        return {"checked_at": row[0], "status": row[1], "live_price": row[2], "url": row[3]}
+        keys = ("checked_at", "status", "live_price", "url", "source", "price_level", "typical_low", "typical_high")
+        return dict(zip(keys, row))
 
-    def put_verification(self, trip_key: str, status: str, live_price: float | None, url: str | None) -> dict:
+    def put_verification(
+        self,
+        trip_key: str,
+        status: str,
+        live_price: float | None,
+        url: str | None,
+        source: str = "google",
+        price_level: str | None = None,
+        typical_low: float | None = None,
+        typical_high: float | None = None,
+    ) -> dict:
         checked_at = utcnow().isoformat()
         self.db.execute(
-            "INSERT OR REPLACE INTO verifications (trip_key, checked_at, status, live_price, url) VALUES (?, ?, ?, ?, ?)",
-            (trip_key, checked_at, status, live_price, url),
+            "INSERT OR REPLACE INTO verifications "
+            "(trip_key, checked_at, status, live_price, url, source, price_level, typical_low, typical_high) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (trip_key, checked_at, status, live_price, url, source, price_level, typical_low, typical_high),
         )
-        return {"checked_at": checked_at, "status": status, "live_price": live_price, "url": url}
+        return {
+            "checked_at": checked_at, "status": status, "live_price": live_price, "url": url, "source": source,
+            "price_level": price_level, "typical_low": typical_low, "typical_high": typical_high,
+        }
 
     # --- alerts -------------------------------------------------------------
 
@@ -174,3 +200,10 @@ class Store:
 
     def set_meta(self, key: str, value: str) -> None:
         self.db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+
+    def count_usage(self, name: str, period: str) -> int:
+        return int(self.get_meta(f"usage:{name}:{period}") or 0)
+
+    def add_usage(self, name: str, periods: list[str]) -> None:
+        for period in periods:
+            self.set_meta(f"usage:{name}:{period}", str(self.count_usage(name, period) + 1))

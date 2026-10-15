@@ -24,8 +24,12 @@ show on a small dashboard hosted on GitHub Pages.
    A fare at least 40% below baseline is a deal. 65%+ below is flagged as a possible
    mistake fare. Both thresholds are in `config.toml`.
 3. **Confirm.** Travelpayouts prices are cached from searches in the last 48 hours, so the
-   biggest drops are re-checked on Google Flights with
-   [fast-flights](https://github.com/AWeirdDev/flights). Deals that went up are shown faded.
+   biggest drops are re-checked on Google Flights. Possible mistake fares go through
+   [SerpApi](https://serpapi.com/google-flights-api) (free plan: 250 searches a month,
+   budgeted at 8 a day), which works reliably from GitHub and also returns Google's typical
+   price range for the trip. Other deals use
+   [fast-flights](https://github.com/AWeirdDev/flights), which Google often blocks on
+   GitHub's servers. Deals that went up are shown faded.
 4. **Alert.** A digest of new deals (50%+ below baseline and confirmed live on Google
    Flights) and new deal-site posts goes out with the first scan after 01:00 and 13:00 UTC.
    Confirmed mistake fares and posts that say "error fare" are emailed on any scan. The same
@@ -51,19 +55,25 @@ from **Profile → API token**.
 Any other SMTP provider works too: set `SMTP_HOST` and `SMTP_PORT` (465 for SSL, 587 for
 STARTTLS).
 
-### 3. Telegram bot (optional)
+### 3. SerpApi key (recommended, for mistake-fare checks)
+
+Sign up free at [serpapi.com](https://serpapi.com/users/sign_up) and copy your API key from
+the dashboard. Without it, mistake fares are checked with fast-flights only.
+
+### 4. Telegram bot (optional)
 
 1. In Telegram, message [@BotFather](https://t.me/BotFather), send `/newbot`, and copy the bot token.
 2. Send any message to your new bot.
 3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `message.chat.id`.
 
-### 4. GitHub
+### 5. GitHub
 
 Add repository secrets (**Settings → Secrets and variables → Actions**):
 
 | Secret | Value |
 |---|---|
 | `TRAVELPAYOUTS_TOKEN` | your Travelpayouts token |
+| `SERPAPI_API_KEY` | your SerpApi key (recommended) |
 | `SMTP_USER` | the Gmail address that sends the digest |
 | `SMTP_PASSWORD` | its app password |
 | `ALERT_EMAIL_TO` | where to send it, comma-separated (optional; defaults to `SMTP_USER`) |
@@ -77,7 +87,7 @@ lands in your shell history.
 Then set **Settings → Pages → Source** to **GitHub Actions**, and run the
 **Scan fares** workflow once from the Actions tab.
 
-### 5. Home airports
+### 6. Home airports
 
 Edit `config.toml`. Use IATA city codes (`NYC`, `DEL`) to cover every airport in a metro
 area, or airport codes (`JFK`, `BLR`). Set `currency` and `market` per origin
@@ -105,7 +115,7 @@ Run the tests with `python -m unittest`.
 ## Ground rules
 
 This is for personal use. It keeps request volume modest (about 190 Travelpayouts calls,
-up to 12 Google Flights checks and 3 feed reads per run, six times a day; Travelpayouts
+up to 12 Google Flights checks, up to 3 SerpApi searches and 3 feed reads per run, six times a day; Travelpayouts
 allows 600 calls a minute) and does not try to get around rate limits or blocks.
 
 ## What it can and can't catch

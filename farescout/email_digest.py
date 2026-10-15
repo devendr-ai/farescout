@@ -42,7 +42,10 @@ def _stops(n: int | None) -> str:
 def _check_text(d: dict) -> str:
     v = d.get("verified") or {}
     if v.get("status") == "confirmed":
-        return f"Live-checked on Google Flights: {d.get('price_label_live')}"
+        text = f"Live-checked on Google Flights: {d.get('price_label_live')}"
+        if d.get("google_typical_label"):
+            text += f". Google says this trip usually costs {d['google_typical_label']}"
+        return text
     return "Not live-checked"
 
 

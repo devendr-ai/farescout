@@ -69,6 +69,16 @@ tolerance = 0.15
 # Reuse a check for this many hours before checking the same trip again.
 cache_hours = 6
 
+[serpapi]
+# Reliable live checks for possible mistake fares through SerpApi's Google Flights API.
+# Needs the SERPAPI_API_KEY secret. The free plan has 250 searches a month.
+enabled = true
+monthly_budget = 240
+daily_budget = 8
+max_per_run = 3
+# Don't re-check the same trip within this many hours.
+cache_hours = 24
+
 [alerts]
 # Each scan emails one digest of new deals at least this far below baseline
 # (and sends Telegram messages, if configured).

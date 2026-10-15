@@ -81,7 +81,20 @@ def deal_to_json(
         "duration_minutes": f.get("duration"),
         "aviasales_url": f"https://www.aviasales.com{link}" if link else None,
         "google_url": google_url,
-        "verified": {"status": v["status"], "live_price": v.get("live_price"), "checked_at": v.get("checked_at")},
+        "verified": {
+            "status": v["status"],
+            "live_price": v.get("live_price"),
+            "checked_at": v.get("checked_at"),
+            "source": v.get("source"),
+            "price_level": v.get("price_level"),
+            "typical_low": v.get("typical_low"),
+            "typical_high": v.get("typical_high"),
+        },
+        "google_typical_label": (
+            f"{money(v['typical_low'], deal.currency)}–{money(v['typical_high'], deal.currency)}"
+            if v.get("typical_low") and v.get("typical_high")
+            else None
+        ),
         "price_label_live": money(v["live_price"], deal.currency) if v.get("live_price") else None,
         "history": [[d, p] for d, p in history],
     }

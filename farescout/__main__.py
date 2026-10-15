@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import config as config_mod
+from . import serpapi
 from .detect import find_deals
 from .email_digest import build_digest, email_configured, send_email
 from .export import deal_to_json, history_window_start, month_range, write_deals_json
@@ -80,6 +81,58 @@ def digest_due(now, hours_utc: tuple[int, ...], last_sent_iso: str | None) -> bo
     return last < latest
 
 
+def verify_deals(cfg, store: Store, deals: list, no_verify: bool, today) -> tuple[dict, int, int]:
+    """Live-check deals. Returns (verifications by trip key, fast-flights checks, SerpApi checks)."""
+    verifications: dict[str, dict] = {}
+    checks = serp_checks = 0
+    serp_key = serpapi.api_key() if cfg.serpapi.enabled else None
+    serp_left: int | None = None  # fetched once, only if needed
+    month, day = today.strftime("%Y-%m"), today.isoformat()
+    for deal in deals:
+        key = trip_key(deal)
+        cache_hours = max(cfg.verify.cache_hours, cfg.serpapi.cache_hours) if deal.mistake else cfg.verify.cache_hours
+        cached = store.get_verification(key, cache_hours)
+        if cached:
+            verifications[key] = cached
+            continue
+        if no_verify:
+            continue
+        within_budget = (
+            serp_checks < cfg.serpapi.max_per_run
+            and store.count_usage("serpapi", month) < cfg.serpapi.monthly_budget
+            and store.count_usage("serpapi", day) < cfg.serpapi.daily_budget
+        )
+        if deal.mistake and serp_key and within_budget:
+            if serp_left is None:
+                serp_left = serpapi.searches_left(serp_key)
+            if serp_left is None or serp_left > 0:
+                r = serpapi.check(deal, serp_key, cfg.verify.tolerance)
+                serp_checks += 1
+                store.add_usage("serpapi", [month, day])
+                if serp_left is not None:
+                    serp_left -= 1
+                log.info("SerpApi check %s-%s %s: %s %s", deal.origin, deal.destination, deal.month, r["status"], r["live_price"] or "")
+                if r["status"] in ("confirmed", "higher"):
+                    verifications[key] = store.put_verification(
+                        key, r["status"], r["live_price"], r["url"], "serpapi",
+                        r["price_level"], r["typical_low"], r["typical_high"],
+                    )
+                    continue
+                # SerpApi had no answer: fall back to fast-flights below.
+        if not cfg.verify.enabled or checks >= cfg.verify.max_per_run:
+            continue
+        status, live, url = check_live(deal, cfg.verify.tolerance)
+        checks += 1
+        if status in ("confirmed", "higher"):
+            verifications[key] = store.put_verification(key, status, live, url)
+        elif status == "error":
+            # Show this run's failure, but don't cache it, so the next run retries.
+            verifications[key] = {"checked_at": utcnow().isoformat(), "status": status, "live_price": None, "url": url}
+        log.info("live check %s-%s %s: %s %s", deal.origin, deal.destination, deal.month, status, live or "")
+        time.sleep(cfg.verify.delay_seconds)
+    return verifications, checks, serp_checks
+
+
 def cmd_scan(args: argparse.Namespace) -> int:
     cfg = config_mod.load(args.config)
     token = os.environ.get("TRAVELPAYOUTS_TOKEN")
@@ -142,26 +195,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
     deals.sort(key=lambda d: d.off, reverse=True)
     log.info("%d deals", len(deals))
 
-    # 3. Live-check the best deals on Google Flights.
-    verifications: dict[str, dict] = {}
-    checks = 0
-    for deal in deals:
-        key = trip_key(deal)
-        cached = store.get_verification(key, cfg.verify.cache_hours)
-        if cached:
-            verifications[key] = cached
-            continue
-        if args.no_verify or not cfg.verify.enabled or checks >= cfg.verify.max_per_run:
-            continue
-        status, live, url = check_live(deal, cfg.verify.tolerance)
-        checks += 1
-        if status in ("confirmed", "higher"):
-            verifications[key] = store.put_verification(key, status, live, url)
-        elif status == "error":
-            # Show this run's failure, but don't cache it, so the next run retries.
-            verifications[key] = {"checked_at": utcnow().isoformat(), "status": status, "live_price": None, "url": url}
-        log.info("live check %s-%s %s: %s %s", deal.origin, deal.destination, deal.month, status, live or "")
-        time.sleep(cfg.verify.delay_seconds)
+    # 3. Live-check the best deals: SerpApi for possible mistake fares (budgeted), fast-flights for the rest.
+    verifications, checks, serp_checks = verify_deals(cfg, store, deals, args.no_verify, today)
     store.db.commit()
 
     # 4. Deal-site feeds: posts leaving from a home airport.
@@ -192,7 +227,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
         "requests": requests,
         "months": months,
         "failed_requests": failures,
-        "live_checks": checks,
+        "live_checks": checks + serp_checks,
+        "serpapi_checks": serp_checks,
         "posts": len(posts),
     }
     write_deals_json(Path(args.out), now.isoformat(), origins_json, out_deals, stats, posts)
