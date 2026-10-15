@@ -33,6 +33,7 @@ class Deal:
     off: float  # 0.55 means 55% below baseline
     mistake: bool
     fare: dict
+    nonstop: bool = False  # found by the nonstop-only scan, compared with nonstop history
 
     @property
     def key(self) -> tuple[str, str, str]:
@@ -59,7 +60,9 @@ def baseline_for(
     return None
 
 
-def find_deals(fares: Fares, currencies: dict[str, str], history: HistoryFn, rules: DealRules, today: date) -> list[Deal]:
+def find_deals(
+    fares: Fares, currencies: dict[str, str], history: HistoryFn, rules: DealRules, today: date, nonstop: bool = False
+) -> list[Deal]:
     """Return deals sorted by biggest discount first."""
     deals: list[Deal] = []
     for key, fare in fares.items():
@@ -86,6 +89,7 @@ def find_deals(fares: Fares, currencies: dict[str, str], history: HistoryFn, rul
                 off=round(off, 4),
                 mistake=off >= rules.mistake_off,
                 fare=fare,
+                nonstop=nonstop,
             )
         )
     deals.sort(key=lambda d: d.off, reverse=True)

@@ -61,3 +61,10 @@ def format_deal(d: dict) -> str:
     if links:
         lines.append(" · ".join(links))
     return "\n".join(lines)
+
+
+def format_post(p: dict) -> str:
+    """One deal-site post as a Telegram HTML message."""
+    e = html.escape
+    flag = "🚨 Error fare" if p["error_fare"] else "📰 Deal post"
+    return f'<b>{flag} ({e(p["source"])})</b>\n{e(p["title"])}\n<a href="{e(p["url"])}">Read the post</a>'

@@ -112,6 +112,11 @@ a { color: var(--accent); }
 .panel p, .panel dl { margin: 0; font-size: 14px; color: var(--muted); }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
 .kv dd { margin: 0; color: var(--ink); font-family: var(--f-mono); font-size: 13px; text-align: right; }
+.posts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.posts li { display: grid; gap: 2px; font-size: 14px; min-width: 0; }
+.posts a { color: var(--ink); text-decoration: none; font-weight: 700; overflow-wrap: anywhere; }
+.posts a:hover { color: var(--accent); text-decoration: underline; }
+.posts .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: s; }
 .steps li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; font-size: 14px; color: var(--muted); counter-increment: s; }
 .steps li::before { content: counter(s); font-family: var(--f-display); font-stretch: 80%; font-weight: 800; background: var(--sign-fg); color: #15181D; border-radius: 3px; height: 24px; display: grid; place-items: center; }
@@ -175,6 +180,10 @@ a { color: var(--accent); }
     </main>
 
     <aside class="rail">
+      <section class="panel" id="posts-panel" hidden>
+        <h3>From deal sites</h3>
+        <ul class="posts" id="posts"></ul>
+      </section>
       <section class="panel">
         <h3>Last scan</h3>
         <dl class="kv" id="scan-stats"></dl>
@@ -182,9 +191,9 @@ a { color: var(--accent); }
       <section class="panel">
         <h3>How deals are found</h3>
         <ol class="steps">
-          <li><span><b>Scan.</b> Twice a day, pull the cheapest roundtrip from each home airport to every destination, for each of the next 10 months.</span></li>
+          <li><span><b>Scan.</b> Six times a day, pull the cheapest roundtrip (and cheapest nonstop) from each home airport to every destination for the next 10 months, plus Aviasales' special offers and posts from free deal sites.</span></li>
           <li><span><b>Compare.</b> Check each fare against the route's 90-day median for that month. Until history builds up, compare with the route's other months.</span></li>
-          <li><span><b>Confirm.</b> Re-check the biggest drops live on Google Flights, then email a digest of the new ones.</span></li>
+          <li><span><b>Confirm.</b> Re-check the biggest drops live on Google Flights. New deals are emailed twice a day; confirmed mistake fares right away.</span></li>
         </ol>
       </section>
     </aside>
@@ -267,7 +276,11 @@ a { color: var(--accent); }
       generated_at: new Date(Date.now() - 2 * 3600000).toISOString(), sample: true,
       origins: [{ code: 'NYC', name: 'New York', currency: 'usd' }, { code: 'DEL', name: 'Delhi', currency: 'inr' }, { code: 'BOM', name: 'Mumbai', currency: 'inr' }],
       regions: { na: 'US & Canada', in: 'India', eu: 'Europe', as: 'Asia', me: 'Middle East', la: 'Latin America', cb: 'Caribbean', af: 'Africa', oc: 'Oceania', other: 'Other' },
-      stats: { fares: 2140, months, failed_requests: 0, live_checks: 12 }, deals
+      stats: { fares: 2140, nonstop_fares: 610, months, failed_requests: 0, live_checks: 12 }, deals,
+      posts: [
+        { source: 'The Flight Deal', title: 'Delta: New York – Porto, Portugal. $498 (Basic Economy) / $738 (Regular Economy). Roundtrip, including all Taxes', url: 'https://www.theflightdeal.com/', published: new Date(Date.now() - 5 * 3600000).toISOString(), origins: ['NYC'], price_text: '$498', error_fare: false },
+        { source: 'r/flightdeals', title: 'Error fare? Delhi to Bangkok ₹9,800 roundtrip on Thai', url: 'https://www.reddit.com/r/flightdeals/', published: new Date(Date.now() - 2 * 3600000).toISOString(), origins: ['DEL'], price_text: '₹9,800', error_fare: true }
+      ]
     };
   }
 
@@ -283,6 +296,7 @@ a { color: var(--accent); }
     const rows = [
       ['Updated', ago(DATA.generated_at)],
       ['Fares scanned', (s.fares || 0).toLocaleString()],
+      ...(s.nonstop_fares != null ? [['Nonstop fares', s.nonstop_fares.toLocaleString()]] : []),
       ['Deals found', DATA.deals.length.toLocaleString()],
       ['Live checks this run', s.live_checks ?? 0]
     ];
@@ -312,6 +326,7 @@ a { color: var(--accent); }
   function cardHTML(d) {
     const v = d.verified || {};
     let tags = d.mistake ? '<span class="tag tag-mistake">Possible mistake fare</span>' : '';
+    if (d.nonstop_deal) tags += '<span class="tag tag-live">Nonstop deal</span>';
     if (v.status === 'confirmed') tags += '<span class="tag tag-live">Live ✓</span>';
     else if (v.status === 'higher') tags += `<span class="tag tag-stale">Now ${money(v.live_price, d.currency)}</span>`;
     else if (v.status === 'gone') tags += '<span class="tag tag-stale">Gone</span>';
@@ -361,7 +376,16 @@ a { color: var(--accent); }
     grid.innerHTML = current.map(cardHTML).join('');
   }
 
-  function renderAll() { renderOrigins(); renderStats(); renderMonths(); renderDeals(); }
+  function renderPosts() {
+    const posts = (DATA.posts || []).filter(p => p.origins.some(c => state.sel.includes(c)));
+    $('posts-panel').hidden = !posts.length;
+    $('posts').innerHTML = posts.slice(0, 12).map(p => `<li>
+      <a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>
+      <span class="meta">${p.error_fare ? '<span class="tag tag-mistake">Error fare</span>' : ''}${esc(p.source)}${p.published ? ' · ' + ago(p.published) : ''}</span>
+    </li>`).join('');
+  }
+
+  function renderAll() { renderOrigins(); renderStats(); renderMonths(); renderDeals(); renderPosts(); }
 
   // ---------- detail ----------
   function chartSVG(d) {
@@ -432,7 +456,7 @@ a { color: var(--accent); }
     const b = e.target.closest('[data-origin]'); if (!b) return;
     const c = b.dataset.origin;
     state.sel = state.sel.includes(c) ? state.sel.filter(x => x !== c) : [...state.sel, c];
-    save(); renderOrigins(); renderDeals();
+    save(); renderOrigins(); renderDeals(); renderPosts();
   });
   $('regions').addEventListener('click', e => { const b = e.target.closest('[data-region]'); if (b) { state.region = b.dataset.region; save(); renderDeals(); } });
   $('f-month').addEventListener('change', e => { state.month = e.target.value; save(); renderDeals(); });

@@ -46,17 +46,35 @@ def _check_text(d: dict) -> str:
     return "Not live-checked"
 
 
-def build_digest(deals: list[dict], dashboard_url: str = "") -> tuple[str, str, str]:
-    """Return (subject, plain text, html) for a digest of `deals`, best first."""
+def _subject(deals: list[dict], posts: list[dict], urgent: bool) -> str:
+    if deals:
+        best = deals[0]
+        lead = f"{best['origin']} to {best['destination_name']} {best['price_label']} ({round(best['off'] * 100)}% off)"
+        if urgent:
+            subject = f"Possible mistake fare: {lead}"
+        else:
+            subject = f"{len(deals)} flight deal{'s' if len(deals) > 1 else ''}: {lead}"
+        more = len(deals) - 1 + len(posts)
+        return subject + (f" + {more} more" if more else "")
+    first = posts[0]
+    prefix = "Error fare" if urgent else f"{len(posts)} new deal post{'s' if len(posts) > 1 else ''}"
+    title = first["title"] if len(first["title"]) <= 90 else first["title"][:87] + "..."
+    return f"{prefix}: {title}"
+
+
+def build_digest(
+    deals: list[dict], posts: list[dict] | tuple = (), dashboard_url: str = "", urgent: bool = False
+) -> tuple[str, str, str]:
+    """Return (subject, plain text, html) for deals (best first) and deal-site posts.
+
+    urgent=True is the instant email for mistake fares sent between digests.
+    """
     deals = sorted(deals, key=lambda d: d["off"], reverse=True)
-    best = deals[0]
-    n = len(deals)
-    subject = (
-        f"{n} flight deal{'s' if n > 1 else ''}: "
-        f"{best['origin']} to {best['destination_name']} {best['price_label']} ({round(best['off'] * 100)}% off)"
-    )
-    if n > 1:
-        subject += f" + {n - 1} more"
+    posts = list(posts)
+    if not deals and not posts:
+        raise ValueError("nothing to send")
+    subject = _subject(deals, posts, urgent)
+    e = html.escape
 
     text_lines = []
     for d in deals:
@@ -69,11 +87,15 @@ def build_digest(deals: list[dict], dashboard_url: str = "") -> tuple[str, str, 
             f"  Google Flights: {d['google_url']}",
             "",
         ]
+    if posts:
+        text_lines.append("From deal sites:")
+        for p in posts:
+            flag = "ERROR FARE. " if p["error_fare"] else ""
+            text_lines += [f"  {flag}{p['title']} ({p['source']})", f"  {p['url']}", ""]
     if dashboard_url:
         text_lines.append(f"All deals: {dashboard_url}")
     text = "\n".join(text_lines)
 
-    e = html.escape
     rows = []
     for d in deals:
         color = "#B9410E" if d["mistake"] else "#0B7F57"
@@ -99,6 +121,32 @@ def build_digest(deals: list[dict], dashboard_url: str = "") -> tuple[str, str, 
   <div style="font-size:13px;margin-top:6px">{links}</div>
 </td></tr>"""
         )
+    post_rows = []
+    for p in posts:
+        tag = (
+            '<span style="background:#FBE6DA;color:#B9410E;font-size:11px;font-weight:700;'
+            'padding:2px 6px;border-radius:4px;text-transform:uppercase">Error fare</span> '
+            if p["error_fare"]
+            else ""
+        )
+        post_rows.append(
+            f"""<tr><td style="padding:10px 0;border-bottom:1px solid #D3DCE6;font-size:14px">
+  {tag}<a href="{e(p['url'])}" style="color:#0E1A2B;font-weight:700;text-decoration:none">{e(p['title'])}</a>
+  <div style="font-size:12px;color:#56667A;margin-top:2px">{e(p['source'])}</div>
+</td></tr>"""
+        )
+    posts_html = (
+        '<h2 style="font-size:16px;margin:20px 0 0">From deal sites</h2>'
+        f'<table role="presentation" style="width:100%;border-collapse:collapse">{"".join(post_rows)}</table>'
+        if post_rows
+        else ""
+    )
+    deals_html = (
+        f'<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:8px">{"".join(rows)}</table>'
+        if rows
+        else ""
+    )
+    heading = "Possible mistake fare" if urgent else "New flight deals"
     footer = (
         f'<p style="font-size:13px"><a href="{e(dashboard_url)}" style="color:#1C4BD6">See all deals on the dashboard</a></p>'
         if dashboard_url
@@ -106,9 +154,10 @@ def build_digest(deals: list[dict], dashboard_url: str = "") -> tuple[str, str, 
     )
     body_html = f"""<!doctype html><html><body style="margin:0;padding:16px;background:#ffffff;color:#0E1A2B;font-family:Arial,sans-serif">
 <div style="max-width:560px;margin:0 auto">
-<h1 style="font-size:20px;margin:0 0 4px">New flight deals</h1>
-<p style="font-size:13px;color:#56667A;margin:0">Fares far below each route's normal price. Cached prices can move fast; book soon if one fits.</p>
-<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:8px">{''.join(rows)}</table>
+<h1 style="font-size:20px;margin:0 0 4px">{heading}</h1>
+<p style="font-size:13px;color:#56667A;margin:0">Fares far below each route's normal price. Prices move fast; book soon if one fits.</p>
+{deals_html}
+{posts_html}
 {footer}
 </div></body></html>"""
     return subject, text, body_html

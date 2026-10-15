@@ -2,18 +2,21 @@
 
 A personal flight-deal finder. It watches fares from your home airports, compares each
 one with that route's own normal price, re-checks the best ones live on Google Flights,
-and emails you a digest of new deals twice a day. Results show on a small dashboard
-hosted on GitHub Pages.
-
-No deal sites are involved: deals come from fare data, not from someone else's list.
+and emails you a digest of new deals twice a day, with confirmed mistake fares sent right
+away. It also pulls posts from free deal-site feeds that leave from your airports. Results
+show on a small dashboard hosted on GitHub Pages.
 
 ## How it works
 
-1. **Scan.** Twice a day (01:00 and 14:00 UTC: about 6pm and 7am in Seattle, 6:30am and
-   7:30pm in India) a GitHub Action asks the
+1. **Scan.** Six times a day (every 4 hours from 01:00 UTC) a GitHub Action asks the
    [Travelpayouts Data API](https://support.travelpayouts.com/hc/en-us/articles/203956163-Aviasales-Data-API)
    for the cheapest roundtrip from each home airport to every destination, for each of
-   the next 10 departure months.
+   the next 10 departure months. Each scan also pulls:
+   - the cheapest **nonstop** roundtrips, compared only with nonstop history;
+   - Aviasales' **special offers** (fares it flags as abnormally low);
+   - more than one data **market** per airport (Indian airports use both `in` and `us`);
+   - posts from free deal-site feeds (The Flight Deal, r/flightdeals, Fly4free) that leave
+     from a home airport. Feeds that refuse a request are skipped for that run.
 2. **Compare.** Each fare is compared with a baseline for the same route and departure month:
    - the median daily low over the last 90 days, once there are 7+ days of history;
    - before that, the median price of the same route's other departure months.
@@ -23,9 +26,11 @@ No deal sites are involved: deals come from fare data, not from someone else's l
 3. **Confirm.** Travelpayouts prices are cached from searches in the last 48 hours, so the
    biggest drops are re-checked on Google Flights with
    [fast-flights](https://github.com/AWeirdDev/flights). Deals that went up are shown faded.
-4. **Alert.** Each scan emails one digest of new deals that are 50%+ below baseline and
-   confirmed live on Google Flights. The same route and month won't alert again unless the
-   price drops another 10% or 14 days pass. Telegram messages are optional.
+4. **Alert.** A digest of new deals (50%+ below baseline and confirmed live on Google
+   Flights) and new deal-site posts goes out with the first scan after 01:00 and 13:00 UTC.
+   Confirmed mistake fares and posts that say "error fare" are emailed on any scan. The same
+   route and month won't alert again unless the price drops another 10% or 14 days pass.
+   Telegram messages are optional.
 
 Fare history is stored in SQLite (`data/farescout.db`) and carried between runs in the
 GitHub Actions cache, so the repo stays small.
@@ -99,8 +104,17 @@ Run the tests with `python -m unittest`.
 
 ## Ground rules
 
-This is for personal use. It keeps request volume low (about 60 API calls and up to 20
-Google Flights checks per run, twice a day) and does not try to get around rate limits or blocks.
+This is for personal use. It keeps request volume modest (about 190 Travelpayouts calls,
+up to 12 Google Flights checks and 3 feed reads per run, six times a day; Travelpayouts
+allows 600 calls a minute) and does not try to get around rate limits or blocks.
+
+## What it can and can't catch
+
+- Mistake fares that last longer than the gap between scans (4 hours) and that someone
+  searched on Aviasales in the last 48 hours, which is where Travelpayouts prices come from.
+- Deals posted on the free feeds above, usually within 4 hours of posting.
+- It won't see fares nobody searched, and it doesn't read Secret Flying (its feed sits
+  behind a bot check) or paid newsletters.
 
 ## Roadmap
 

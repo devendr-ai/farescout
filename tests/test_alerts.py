@@ -47,7 +47,7 @@ class SelectAlertsTests(unittest.TestCase):
 
 class DigestTests(unittest.TestCase):
     def test_subject_names_best_deal_and_count(self):
-        subject, text, body = build_digest([deal("ICN", off=0.52, name="Seoul"), deal("NRT", off=0.61)], "https://x.test/")
+        subject, text, body = build_digest([deal("ICN", off=0.52, name="Seoul"), deal("NRT", off=0.61)], [], "https://x.test/")
         self.assertEqual(subject, "2 flight deals: SEA to Tokyo $480 (61% off) + 1 more")
         self.assertLess(text.index("Tokyo"), text.index("Seoul"))
         self.assertIn("Thu, Feb 11 to Sun, Feb 21", text)
@@ -87,3 +87,48 @@ class SendEmailTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SendAlertsTests(unittest.TestCase):
+    """Digest at the configured hours; only mistake fares and error-fare posts in between."""
+
+    def setUp(self):
+        from farescout.config import Config, Origin
+        from farescout.store import Store
+
+        self.store = Store(":memory:")
+        self.cfg = Config(origins=[Origin("SEA", "usd", ("us",))])
+        self.deals = [deal("NRT", off=0.6), deal("LIS", off=0.7, mistake=True, name="Lisbon")]
+        self.posts = [
+            {"source": "The Flight Deal", "title": "United: Seattle – Reykjavik. $492", "url": "u1", "error_fare": False},
+            {"source": "r/flightdeals", "title": "Error fare: Seattle to Rome $199", "url": "u2", "error_fare": True},
+        ]
+
+    def run_alerts(self, now):
+        from farescout import __main__ as cli
+
+        with mock.patch.object(cli, "email_configured", return_value=True), \
+                mock.patch.object(cli, "telegram_configured", return_value=False), \
+                mock.patch.object(cli, "send_email", return_value=True) as send:
+            cli.send_alerts(self.cfg, self.store, self.deals, self.posts, now)
+        return send
+
+    def test_between_digests_only_urgent_items_go_out(self):
+        self.store.set_meta("last_digest_at", "2026-10-14T13:05:00+00:00")
+        send = self.run_alerts(datetime(2026, 10, 14, 17, 5, tzinfo=timezone.utc))
+        subject, text, _ = send.call_args.args
+        self.assertTrue(subject.startswith("Possible mistake fare: SEA to Lisbon"))
+        self.assertIn("Lisbon", text)
+        self.assertNotIn("Tokyo", text)
+        self.assertIn("Rome", text)
+        self.assertNotIn("Reykjavik", text)
+
+    def test_digest_sends_everything_new_once(self):
+        self.store.set_meta("last_digest_at", "2026-10-14T01:05:00+00:00")
+        send = self.run_alerts(NOW)
+        _, text, _ = send.call_args.args
+        for name in ("Tokyo", "Lisbon", "Reykjavik", "Rome"):
+            self.assertIn(name, text)
+        # Same scan again an hour later: nothing new, nothing sent.
+        send = self.run_alerts(NOW + timedelta(hours=1))
+        send.assert_not_called()

@@ -45,15 +45,32 @@ def _get_json(url: str, token: str | None = None, timeout: int = 30, retries: in
     raise TravelpayoutsError(f"{url.split('?')[0]} failed after {retries} tries: {last_error}")
 
 
-def cheapest_by_destination(origin: str, month: str, currency: str, market: str, token: str) -> list[dict]:
-    """Cheapest roundtrip per destination from `origin`, departing in `month` (YYYY-MM)."""
+def _cheapest_per_destination(rows: list[dict], origin: str) -> list[dict]:
+    best: dict[str, dict] = {}
+    for row in rows:
+        dest = row.get("destination")
+        price = row.get("price")
+        if not dest or not price or dest == origin:
+            continue
+        if dest not in best or price < best[dest]["price"]:
+            best[dest] = row
+    return list(best.values())
+
+
+def cheapest_by_destination(
+    origin: str, month: str, currency: str, market: str, token: str, direct: bool = False
+) -> list[dict]:
+    """Cheapest roundtrip per destination from `origin`, departing in `month` (YYYY-MM).
+
+    With direct=True, only nonstop roundtrips are considered.
+    """
     params = {
         "origin": origin,
         "departure_at": month,
         "one_way": "false",
         "unique": "true",
         "sorting": "price",
-        "direct": "false",
+        "direct": "true" if direct else "false",
         "limit": 1000,
         "currency": currency,
         "market": market,
@@ -62,15 +79,21 @@ def cheapest_by_destination(origin: str, month: str, currency: str, market: str,
     if not data.get("success", False):
         raise TravelpayoutsError(f"prices_for_dates {origin} {month}: {data.get('error') or data}")
     # unique=true should already give one row per destination; keep the cheapest just in case.
-    best: dict[str, dict] = {}
-    for row in data.get("data") or []:
-        dest = row.get("destination")
-        price = row.get("price")
-        if not dest or not price or dest == origin:
-            continue
-        if dest not in best or price < best[dest]["price"]:
-            best[dest] = row
-    return list(best.values())
+    return _cheapest_per_destination(data.get("data") or [], origin)
+
+
+def special_offers(origin: str, currency: str, market: str, token: str) -> list[dict]:
+    """Aviasales' own list of abnormally low fares from `origin`. Roundtrips only."""
+    params = {"origin": origin, "currency": currency, "market": market, "locale": "en"}
+    data = _get_json(f"{API}/aviasales/v3/get_special_offers?{urllib.parse.urlencode(params)}", token)
+    if not data.get("success", False):
+        raise TravelpayoutsError(f"get_special_offers {origin}: {data.get('error') or data}")
+    # One-way offers would look like huge drops against roundtrip baselines, so skip them.
+    return [
+        r
+        for r in data.get("data") or []
+        if r.get("return_at") and r.get("departure_at") and r.get("price") and r.get("destination") != origin
+    ]
 
 
 REFERENCE_KINDS = ("cities", "airports", "countries", "airlines")

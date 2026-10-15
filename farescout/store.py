@@ -2,6 +2,7 @@
 
 Only the daily low per (origin, destination, departure month) is kept, which is what
 the baseline needs and keeps the database small enough to carry between CI runs.
+Nonstop-only fares get their own table, so they are compared with other nonstop fares.
 """
 
 from __future__ import annotations
@@ -16,6 +17,15 @@ CREATE TABLE IF NOT EXISTS route_daily (
     destination TEXT NOT NULL,
     month       TEXT NOT NULL,  -- departure month, YYYY-MM
     day         TEXT NOT NULL,  -- day the price was seen, YYYY-MM-DD (UTC)
+    price       REAL NOT NULL,
+    currency    TEXT NOT NULL,
+    PRIMARY KEY (origin, destination, month, day, currency)
+);
+CREATE TABLE IF NOT EXISTS route_daily_direct (
+    origin      TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    month       TEXT NOT NULL,
+    day         TEXT NOT NULL,
     price       REAL NOT NULL,
     currency    TEXT NOT NULL,
     PRIMARY KEY (origin, destination, month, day, currency)
@@ -35,7 +45,19 @@ CREATE TABLE IF NOT EXISTS alerts (
     sent_at     TEXT NOT NULL,
     PRIMARY KEY (origin, destination, month)
 );
+CREATE TABLE IF NOT EXISTS posts_seen (
+    url     TEXT PRIMARY KEY,  -- deal-site post already sent in an alert
+    sent_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
+
+
+def _table(direct: bool) -> str:
+    return "route_daily_direct" if direct else "route_daily"
 
 
 def utcnow() -> datetime:
@@ -57,10 +79,12 @@ class Store:
 
     # --- fare history -------------------------------------------------------
 
-    def record(self, day: date, origin: str, destination: str, month: str, price: float, currency: str) -> None:
+    def record(
+        self, day: date, origin: str, destination: str, month: str, price: float, currency: str, direct: bool = False
+    ) -> None:
         self.db.execute(
-            """
-            INSERT INTO route_daily (origin, destination, month, day, price, currency)
+            f"""
+            INSERT INTO {_table(direct)} (origin, destination, month, day, price, currency)
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT (origin, destination, month, day, currency)
             DO UPDATE SET price = MIN(price, excluded.price)
@@ -69,10 +93,20 @@ class Store:
         )
 
     def history(
-        self, origin: str, destination: str, month: str, currency: str, since: date, before: date | None = None
+        self,
+        origin: str,
+        destination: str,
+        month: str,
+        currency: str,
+        since: date,
+        before: date | None = None,
+        direct: bool = False,
     ) -> list[tuple[str, float]]:
         """Daily lows for one route and departure month, oldest first."""
-        sql = "SELECT day, price FROM route_daily WHERE origin=? AND destination=? AND month=? AND currency=? AND day>=?"
+        sql = (
+            f"SELECT day, price FROM {_table(direct)} "
+            "WHERE origin=? AND destination=? AND month=? AND currency=? AND day>=?"
+        )
         args: list = [origin, destination, month, currency, since.isoformat()]
         if before is not None:
             sql += " AND day<?"
@@ -82,9 +116,13 @@ class Store:
     def prune(self, keep_days: int, today: date) -> int:
         cutoff = (today - timedelta(days=keep_days)).isoformat()
         past_month = today.strftime("%Y-%m")
-        cur = self.db.execute("DELETE FROM route_daily WHERE day < ? OR month < ?", (cutoff, past_month))
+        removed = 0
+        for table in ("route_daily", "route_daily_direct"):
+            cur = self.db.execute(f"DELETE FROM {table} WHERE day < ? OR month < ?", (cutoff, past_month))
+            removed += cur.rowcount
         self.db.execute("DELETE FROM verifications WHERE checked_at < ?", (cutoff,))
-        return cur.rowcount
+        self.db.execute("DELETE FROM posts_seen WHERE sent_at < ?", (cutoff,))
+        return removed
 
     # --- live checks --------------------------------------------------------
 
@@ -121,3 +159,18 @@ class Store:
             "INSERT OR REPLACE INTO alerts (origin, destination, month, price, sent_at) VALUES (?, ?, ?, ?, ?)",
             (origin, destination, month, float(price), utcnow().isoformat()),
         )
+
+    # --- deal-site posts and run state ------------------------------------------
+
+    def post_seen(self, url: str) -> bool:
+        return self.db.execute("SELECT 1 FROM posts_seen WHERE url=?", (url,)).fetchone() is not None
+
+    def mark_post_seen(self, url: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO posts_seen (url, sent_at) VALUES (?, ?)", (url, utcnow().isoformat()))
+
+    def get_meta(self, key: str) -> str | None:
+        row = self.db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))

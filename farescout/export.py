@@ -52,7 +52,8 @@ def deal_to_json(
         google_url = f"https://www.google.com/travel/flights?q={urllib.parse.quote(q)}&curr={deal.currency.upper()}"
     v = verification or {"status": "unchecked", "live_price": None, "checked_at": None}
     out = {
-        "id": f"{deal.origin}-{deal.destination}-{deal.month}",
+        "id": f"{deal.origin}-{deal.destination}-{deal.month}" + ("-nonstop" if deal.nonstop else ""),
+        "nonstop_deal": deal.nonstop,
         "origin": deal.origin,
         "origin_name": display_name(origin, deal.origin),
         "origin_airport": f.get("origin_airport") or deal.origin,
@@ -93,6 +94,7 @@ def write_deals_json(
     origins: list[dict],
     deals: list[dict],
     stats: dict,
+    posts: list[dict] | None = None,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -102,6 +104,7 @@ def write_deals_json(
         "regions": REGION_NAMES,
         "stats": stats,
         "deals": deals,
+        "posts": posts or [],
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
 

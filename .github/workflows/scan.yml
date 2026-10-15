@@ -2,8 +2,9 @@ name: Scan fares
 
 on:
   schedule:
-    # 14:00 and 01:00 UTC: about 7am and 6pm in Seattle, 7:30pm and 6:30am in India.
-    - cron: "0 1,14 * * *"
+    # Six scans a day, every 4 hours from 01:00 UTC. Email digests go out at the hours
+    # set in config.toml; confirmed mistake fares are emailed on any run.
+    - cron: "0 1,5,9,13,17,21 * * *"
   workflow_dispatch:
 
 permissions:

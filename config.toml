@@ -1,42 +1,49 @@
 # Farescout configuration.
 # Origins are IATA city codes (NYC, DEL) or airport codes (JFK, BLR).
 # City codes cover every airport in the metro area, which is usually what you want.
+# `markets` are Aviasales data markets: each is a separate pool of recent user searches.
+# Indian airports pull from both the India and US markets for more coverage.
 
 [[origin]]
 code = "SEA"
 currency = "usd"
-market = "us"
+markets = ["us"]
 
 [[origin]]
 code = "SFO"
 currency = "usd"
-market = "us"
+markets = ["us"]
 
 [[origin]]
 code = "PDX"
 currency = "usd"
-market = "us"
+markets = ["us"]
 
 [[origin]]
 code = "DEL"
 currency = "inr"
-market = "in"
+markets = ["in", "us"]
 
 [[origin]]
 code = "BOM"
 currency = "inr"
-market = "in"
+markets = ["in", "us"]
 
 [[origin]]
 code = "JAI"
 currency = "inr"
-market = "in"
+markets = ["in", "us"]
 
 [scan]
 # How many departure months to scan, starting with the current month.
 months_ahead = 10
 # Pause between API calls, in seconds.
 request_delay = 0.4
+# Also scan nonstop-only fares, compared with nonstop history. Catches nonstop
+# deals that the cheapest-overall search hides behind cheaper connections.
+nonstop_scan = true
+# Also pull Aviasales' list of abnormally low fares from each home airport.
+special_offers = true
 
 [deals]
 # A fare is a deal when it is at least this far below the route's baseline.
@@ -55,7 +62,7 @@ min_other_months = 4
 # Re-check top deals on Google Flights before showing and alerting.
 # Google often blocks cloud IPs, so this may only work from your own machine.
 enabled = true
-max_per_run = 20
+max_per_run = 12
 delay_seconds = 4
 # A live price up to this much above the cached price still counts as confirmed.
 tolerance = 0.15
@@ -74,3 +81,19 @@ realert_drop = 0.10
 realert_days = 14
 # Linked from the email.
 dashboard_url = "https://devendr-ai.github.io/farescout/"
+# The digest goes out with the first scan at or after each of these UTC hours
+# (01:00 and 13:00 UTC: about 6pm and 6am Seattle time, 6:30am and 6:30pm India time).
+digest_hours_utc = [1, 13]
+# Between digests, email right away for confirmed mistake fares and error-fare posts.
+instant_mistake_fares = true
+
+[feeds]
+# Free deal-site feeds. Posts leaving from a home airport show on the dashboard and in
+# the digest. Feeds that refuse a request (rate limit, bot check) are skipped for that run.
+enabled = true
+max_age_days = 3
+urls = [
+  "https://www.theflightdeal.com/feed/",
+  "https://www.reddit.com/r/flightdeals/.rss",
+  "https://www.fly4free.com/feed/",
+]

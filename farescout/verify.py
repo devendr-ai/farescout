@@ -23,7 +23,7 @@ def trip_key(deal: Deal) -> str:
             (f.get("return_at") or "")[:10],
             deal.currency,
         ]
-    )
+    ) + ("|nonstop" if deal.nonstop else "")
 
 
 def google_flights_query_url(deal: Deal) -> str | None:
@@ -43,11 +43,12 @@ def _build_query(deal: Deal):
     if not depart or not ret:
         return None
     frm = f.get("origin_airport") or deal.origin
+    stops = {"max_stops": 0} if deal.nonstop else {}
     to = f.get("destination_airport") or deal.destination
     return create_query(
         flights=[
-            FlightQuery(date=depart, from_airport=frm, to_airport=to),
-            FlightQuery(date=ret, from_airport=to, to_airport=frm),
+            FlightQuery(date=depart, from_airport=frm, to_airport=to, **stops),
+            FlightQuery(date=ret, from_airport=to, to_airport=frm, **stops),
         ],
         seat="economy",
         trip="round-trip",
